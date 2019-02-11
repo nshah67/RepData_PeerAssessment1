@@ -6,20 +6,86 @@ output:
 ---
 
 
-## Loading and preprocessing the data
+## Loading and preprocessing the data: 
+A table of total numebr of steps by day and the  final histogram of steps by date (with missing values removed) is shown below:
 
-
-
+```{r}
+library(ggplot2)
+library(plyr)
+setwd("/Users/Neha/Documents/Hopkins/Data Science Specialization/Reproducible Research")
+data <- read.table(unz("repdata_data_activity.zip", "activity.csv"), header=T, sep=",")
+#converting to weekdays and correct date format
+data$day <- weekdays(as.Date(data$date))
+data$DateTime<- as.POSIXct(data$date, format="%Y-%m-%d")
+#removing NAs
+clean <- data[!is.na(data$steps),]
+sumTable <- aggregate(data$steps ~ data$date, FUN=sum, )
+colnames(sumTable)<- c("Date", "Steps")
+sumTable
+hist(sumTable$Steps, breaks=5, xlab="Steps", main = "Total Steps per Day")
+```
 ## What is mean total number of steps taken per day?
-
-
+```{r}
+as.integer(mean(sumTable$Steps))
+as.integer(median(sumTable$Steps))
+```
+The mean number of steps taken is 10766 steps per day, and the median is 10765 steps per day.
 
 ## What is the average daily activity pattern?
 
-
+The timeseries of steps across days is shown below:
+```{r}
+intervalTable <- ddply(clean, .(interval), summarize, Avg = mean(steps))
+##Create line plot of average number of steps per interval
+p <- ggplot(intervalTable, aes(x=interval, y=Avg), xlab = "Interval", ylab="Average Number of Steps")
+p + geom_line()+xlab("Interval")+ylab("Number of Steps")+ggtitle("Average Number of Steps per 5 minute Interval")
+maxSteps <- max(intervalTable$Avg)
+intervalTable[intervalTable$Avg==maxSteps,1]
+```
+One average, The maximum number of steps for a five minute interval is 206 steps. That interval is the 835th interval.
 
 ## Imputing missing values
 
+The total number of missing values in the data is 2304
+```{r}
+##Number of NAs in original data set
+nrow(data[is.na(data$steps),])
+```
+We aim to impute misisng values using average of the five minute interval based on the day of the week - weekend may have fewer or more steps (depending on the person) than weekdays.
+```{r}
+avgTable <- ddply(clean, .(interval, day), summarize, Avg = mean(steps)) #creating average
+nadata<- data[is.na(data$steps),] #new dataset
+newdata<-merge(nadata, avgTable, by=c("interval", "day")) #merging
+newdata2<- newdata[,c(6,4,1,2,5)] #reorder to mathc
+colnames(newdata2)<- c("steps", "date", "interval", "day", "DateTime") #same variables
+mergeData <- rbind(clean, newdata2) #merge
+sumTable2 <- aggregate(mergeData$steps ~ mergeData$date, FUN=sum, )
+colnames(sumTable2)<- c("Date", "Steps") # new table
+as.integer(mean(sumTable2$Steps)) #checking mean
+as.integer(median(sumTable2$Steps))
+```
+The mean of the imputed data is 10821 steps per day and the median is 11015 steps per day. 
 
+The histograms comparing the two datasets is shown below:
+```{r}
+hist(sumTable2$Steps, breaks=5, xlab="Steps", main = "Total Steps per Day with Imputation", 
+     col="Black") 
+hist(sumTable$Steps, breaks=5, xlab="Steps", main = "Total Steps per Day with missing values removed",col="Grey") 
+     
+```
+The shapes of the distributions are similar, but the means have slightly increased, from 10766 to 10821, and the medians have increased much more, from 10765 to 11015, in the imputed data.
 
 ## Are there differences in activity patterns between weekdays and weekends?
+The timeseries comparing weekdays and weekends is below:
+```{r}
+mergeData$DayCategory <- ifelse(mergeData$day %in% c("Saturday", "Sunday"), "Weekend", "Weekday")
+library(lattice) 
+## Summarize data by interval and type of day
+intervalTable2 <- ddply(mergeData, .(interval, DayCategory), summarize, Avg = mean(steps))
+
+##Plot data in a panel plot
+xyplot(Avg~interval|DayCategory, data=intervalTable2, type="l",  layout = c(1,2),
+       main="Average steps per interval based on week or weekend day", 
+       ylab="Average Number of Steps", xlab="Interval")
+```
+The user tended to spend more time walking around throughout the day on weekends; however, the same person spent much less time walking around later in the dat during the week after an intial spurt of walking activity.
